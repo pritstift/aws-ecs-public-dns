@@ -16,11 +16,12 @@ exports.handler = async (event, context, callback) => {
 
     const task = event.detail;
     const clusterArn = task.clusterArn;
-    console.log(`clusterArn: ${clusterArn}`)
+    const taskArn = task.taskArn;
+    console.log(`clusterArn: ${clusterArn}, taskArn : ${taskArn}`)
 
-    const clusterName = clusterArn.split(':cluster/')[1];
+    //const clusterName = clusterArn.split(':cluster/')[1];
 
-    const tags = await fetchClusterTags(clusterArn)
+    const tags = await fetchTags(taskArn)
     const domain = tags['domain']
     const hostedZoneId = tags['hostedZoneId']
 
@@ -41,16 +42,16 @@ exports.handler = async (event, context, callback) => {
     const serviceName = task.group.split(":")[1]
     console.log(`task:${serviceName} public-id: ${taskPublicIp}`)
 
-    const containerDomain = `${serviceName}.${domain}`
-    const recordSet = createRecordSet(containerDomain, taskPublicIp)
+    
+    const recordSet = createRecordSet(domain, taskPublicIp)
 
     await updateDnsRecord(clusterName, hostedZoneId, recordSet)
     console.log(`DNS record update finished for ${containerDomain} (${taskPublicIp})`)
 };
 
-async function fetchClusterTags(clusterArn) {
+async function fetchTags(arn) {
     const response = await ecs.listTagsForResource({
-        resourceArn: clusterArn
+        resourceArn: arn
     }).promise()
     return _.reduce(response.tags, function(hash, tag) {
         var key = tag['key'];
