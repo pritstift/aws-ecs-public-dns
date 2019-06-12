@@ -1,7 +1,7 @@
 # Welcome to serverless. Read the docs
 # https://serverless.com/framework/docs/
 
-service: fargate-dns-demo
+service: core-gw-dns
 
 provider:
   name: aws
@@ -17,7 +17,7 @@ provider:
       Resource: "*"  
 
 functions:
-  registerPublicIp:
+  updateDNS:
     memorySize: 128
     handler: src/update-task-dns.handler
     events:

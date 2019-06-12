@@ -19,7 +19,7 @@ exports.handler = async (event, context, callback) => {
     const taskArn = task.taskArn;
     console.log(`clusterArn: ${clusterArn}, taskArn : ${taskArn}`)
 
-    //const clusterName = clusterArn.split(':cluster/')[1];
+    const clusterName = clusterArn.split(':cluster/')[1];
 
     const tags = await fetchTags(taskArn)
     const domain = tags['domain']
@@ -46,7 +46,7 @@ exports.handler = async (event, context, callback) => {
     const recordSet = createRecordSet(domain, taskPublicIp)
 
     await updateDnsRecord(clusterName, hostedZoneId, recordSet)
-    console.log(`DNS record update finished for ${containerDomain} (${taskPublicIp})`)
+    console.log(`DNS record update finished for ${domain} (${taskPublicIp})`)
 };
 
 async function fetchTags(arn) {
