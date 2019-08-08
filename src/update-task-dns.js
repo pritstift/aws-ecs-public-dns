@@ -31,14 +31,29 @@ exports.handler = async (event, context, callback) => {
         console.log(`Skipping. Reason: no "domain" and/or "hostedZoneId" tags found for cluster ${clusterArn}`);
         return;
     }
-    
-    const eniId = getEniId(task);
-    if (!eniId) {
-        console.log('Network interface not found');
-        return;
-    }
 
-    const taskPublicIp = await fetchEniPublicIp(eniId)
+    // for Fargate tasks
+    const eniId = getEniId(task);
+    const containerInstanceArn = task['containerInstanceArn'];
+    if (eniId) {
+        console.log(`Fetched eniId ${eniId}`);
+        var taskPublicIp = await fetchEniPublicIp(eniId);
+        console.log(`Fetched taskPublicIp ${taskPublicIp}`);
+    }
+    else if (containerInstanceArn) {
+        //EC2-type task
+        console.log(`Fetched containerInstanceArn ${containerInstanceArn}`);
+        var taskPublicIp = await fetchContainerPublicIp({
+            "containerInstances":[containerInstanceArn],
+            "cluster":clusterArn
+        });
+        console.log(`Fetched taskPublicIp ${taskPublicIp}`);
+    } 
+    else {
+        console.log("Could not fetch public IP for this task");
+        return;
+
+    }   
     const serviceName = task.group.split(":")[1]
     console.log(`task:${serviceName} public-id: ${taskPublicIp}`)
 
@@ -80,14 +95,55 @@ function getEniId(task) {
     .value()
 }
 
+async function fetchEC2PublicIp(instance) {  
+    const params = {
+        "InstanceIds":[instance]
+    };
+    const data = await ec2.describeInstances(params).promise();
+    if (!data) {
+        console.log("Error describing Instance");
+        return ;
+    } 
+    console.log('Received data from describe Instances: %j', data);
+    const publicIp = data.Reservations[0].Instances[0].PublicIpAddress
+    console.log('Got Public Ip Address %s', publicIp);
+    return publicIp;
+}
+
 async function fetchEniPublicIp(eniId) {
     const data = await ec2.describeNetworkInterfaces({
-        NetworkInterfaceIds: [
+        "NetworkInterfaceIds": [
             eniId
         ]
     }).promise();
-
     return data.NetworkInterfaces[0].PrivateIpAddresses[0].Association.PublicIp;
+}
+
+async function fetchContainerPublicIp(params){
+    // var params = {
+    //     containerInstances:[instance],
+    //     cluster:cluster
+    // };
+
+    const data = await ecs.describeContainerInstances(params).promise();
+    if (!data) {
+        console.log(`Could not get information on Container Instance for cluster ${cluster} and container Instance ${instance}`);
+        return;
+    }
+    const ec2Id = data.containerInstances[0].ec2InstanceId;
+    console.log(`Fetched ec2InstanceId ${ec2Id}`);
+    if (!ec2Id) {
+        console.log(`Could not determine ecInstanceId for container instance ${instance} in cluster ${cluster}`)
+        return;
+    }
+    const publicIp = await fetchEC2PublicIp(ec2Id);
+    if (!publicIp) {
+        console.log(`Could not fetch public IP for instance ${ec2Id}`)
+        return;
+    }
+    return publicIp;
+
+
 }
 
 function createRecordSet(domain, publicIp) {
@@ -109,7 +165,7 @@ function createRecordSet(domain, publicIp) {
 async function updateDnsRecord(clusterName, hostedZoneId, changeRecordSet) {
     let param = {
         ChangeBatch: {
-            "Comment": `Auto generated Record for ECS Fargate cluster ${clusterName}`,
+            "Comment": `Auto generated Record for ECS cluster ${clusterName}`,
             "Changes": [changeRecordSet]
         },
         HostedZoneId: hostedZoneId
